@@ -1,0 +1,47 @@
+#include<stdio.h>
+#include<cuda_runtime.h>
+__global__
+void flash(float* Q,float* K, float* V, float* O, int N,int d){
+    int i=blockIdx.x;
+    extern __shared__ float shared[];
+    float* Kt=shared;
+    float* Vt=shared+blockDim.x*d;
+    float m=-INFINITY;
+    float 1=0.0f;
+    float ol[128];
+    for(int x=0;x<d;x++){
+        q[x]=Q[i*d+x];
+    }
+    for (int j=0;j<N;j+=blockDim.x){
+        int k=j+threadIdx.x;
+        if(j<N){
+            for(int x=0;x<d;x++){
+                Kt[threadIdx.x*d+x]=K[k*d+x];
+                Vt[threadIdx.x*d+x]=V[k*d+x];
+            }
+        }
+        __syncthreads();
+        float s[32];
+        float bm=-INFINITY;
+        for (int t = 0; t < blockDim.x && (j + t) < N; t++) {
+            float dot = 0.0f;
+            for (int x = 0; x < d; x++) {
+                dot += q[x] * Kt[t * d + x];
+            }
+            s[t] = dot;
+            if (dot > bm) bm = dot;
+        }
+        float m_new = max(m, bm);
+        float scale = expf(m - m_new);
+        l *= scale;
+        for (int x = 0; x < d; x++) {
+            o_local[x] *= scale;
+        } 
+    }
+    m = m_new;
+        __syncthreads();
+    }
+    for (int x = 0; x < d; x++) {
+        O[i * d + x] = o_local[x] / l;
+    }
+}
